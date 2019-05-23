@@ -9,6 +9,7 @@ Bulk add GTM tags with scheduled duration
 """
 
 import time
+import json
 import multiprocessing
 from googleapiclient.discovery import build
 from oauth2client.service_account import ServiceAccountCredentials
@@ -27,15 +28,13 @@ VIEW_ID = "86412644"
 ACCOUNT_ID = "20278225"
 
 
-def init_service(name, version, scopes, keyfile_location):
+def init_service(name, version, keyfile):
     """Initializes Google API service object
 
     Returns:
         An authorized Google API service object.
     """
-    credentials = ServiceAccountCredentials.from_json_keyfile_name(
-        keyfile_location, scopes
-    )
+    credentials = ServiceAccountCredentials.from_json_keyfile_dict(keyfile)
 
     # Build the service object.
     service = build(name, version, credentials=credentials)
@@ -527,8 +526,14 @@ def main():
     ACM_CONTAINER_ID = "139462"
     WORKSPACE_ID = "478"  # Default workspace id
 
-    ga_service = init_service("analytics", "v3", GA_SCOPES, GA_KEY_FILE_LOCATION)
-    tm_service = init_service("tagmanager", "v2", TM_SCOPES, GA_KEY_FILE_LOCATION)
+    keyfile = None
+    with open(GA_KEY_FILE_LOCATION, "r") as f:
+        keyfile = json.load(f)
+
+    ga_service = init_service("analytics", "v3", keyfile)
+    tm_service = init_service("tagmanager", "v2", keyfile)
+    # ga_service = init_service("analytics", "v3", GA_SCOPES, GA_KEY_FILE_LOCATION)
+    # tm_service = init_service("tagmanager", "v2", TM_SCOPES, GA_KEY_FILE_LOCATION)
 
     # # Add user
     # add_user_to_view(
@@ -572,18 +577,18 @@ def main():
 
     # batch_delete_users(ga_service, ACCOUNT_ID, ["jinified@gmail.com"])
 
-    # # List View Users for AWANI
-    # view_users = list_view_users(
-    #     ga_service, ACCOUNT_ID, AWANI_PROPERTY_ID, AWANI_WEBSITE_COMBINED_ID
-    # )
+    # List View Users for AWANI
+    view_users = list_view_users(
+        ga_service, ACCOUNT_ID, AWANI_PROPERTY_ID, AWANI_WEBSITE_COMBINED_ID
+    )
 
-    # for profileUserLink in view_users.get("items", []):
-    #     userRef = profileUserLink.get("userRef", {})
-    #     permissions = profileUserLink.get("permissions", {})
+    for profileUserLink in view_users.get("items", []):
+        userRef = profileUserLink.get("userRef", {})
+        permissions = profileUserLink.get("permissions", {})
 
-    #     print(
-    #         f'Email: {userRef.get("email")}, LinkId: {profileUserLink.get("id")}, Permissions: {permissions.get("effective")}'
-    #     )
+        print(
+            f'Email: {userRef.get("email")}, LinkId: {profileUserLink.get("id")}, Permissions: {permissions.get("effective")}'
+        )
 
     # # Get container
     # container = get_container(tm_service, TAGMANAGER_ACCOUNT_ID, ACM_CONTAINER_NAME)

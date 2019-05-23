@@ -8,6 +8,8 @@ Bulk delete users
 Bulk add GTM tags with scheduled duration
 """
 
+import time
+import multiprocessing
 from googleapiclient.discovery import build
 from oauth2client.service_account import ServiceAccountCredentials
 from googleapiclient.errors import HttpError
@@ -80,13 +82,6 @@ def list_view_users(service, accountId, webPropertyId, profileId):
             .list(accountId=accountId, webPropertyId=webPropertyId, profileId=profileId)
             .execute()
         )
-        for profileUserLink in profile_links.get("items", []):
-            userRef = profileUserLink.get("userRef", {})
-            permissions = profileUserLink.get("permissions", {})
-
-            print(
-                f'Email: {userRef.get("email")}, LinkId: {profileUserLink.get("id")}, Permissions: {permissions.get("effective")}'
-            )
 
         return profile_links
 
@@ -97,6 +92,78 @@ def list_view_users(service, accountId, webPropertyId, profileId):
     except HttpError as error:
         # Handle API errors.
         print(f"There was an API error : {error.resp.status} : {error.resp.reason}")
+
+
+def batch_delete_users(service, accountId, users, views=None):
+    """ Batch delete users
+
+    Parameters:
+        users (list): list of user_email
+    """
+
+    def delete_user_from_property(property, account_id, batch):
+        property_id = property.get("id")
+
+        for view in property.get("profiles", []):
+            view_id = view.get("id")
+            links = (
+                service.management()
+                .profileUserLinks()
+                .list(
+                    accountId=account_id, webPropertyId=property_id, profileId=view_id
+                )
+                .execute()
+            )
+            links = [
+                x.get("id")
+                for x in links.get("items", [])
+                if x.get("userRef", {})["email"] == user
+            ]
+            print(f"Property: {property_id}, View: {view_id}, Links: {links}")
+            for link in links:
+                batch.add(
+                    service.management()
+                    .profileUserLinks()
+                    .delete(
+                        accountId=account_id,
+                        webPropertyId=property_id,
+                        profileId=view_id,
+                        linkId=link,
+                    )
+                )
+
+    def handle_delete_user(requestId, response, exception):
+        if exception is not None:
+            print(f"There was an error: {exception}")
+        else:
+            print(f"Request ID: {requestId}, Deleted user: {response}")
+
+    start_time = time.time()
+
+    # Get the a full set of account summaries.
+    account_summaries = service.management().accountSummaries().list().execute()
+
+    # Loop through each account.
+    for account in account_summaries.get("items", []):
+        account_id = account.get("id")
+
+        for user in users:
+            processes = []
+            batch = BatchHttpRequest(callback=handle_delete_user)
+
+            for property_summary in account.get("webProperties", []):
+                p = multiprocessing.Process(
+                    target=delete_user_from_property,
+                    args=(property_summary, account_id, batch),
+                )
+                processes.append(p)
+                p.start()
+
+            for process in processes:
+                process.join()
+            batch.execute()
+
+    print(f"That took {(time.time() - start_time) / 60} min")
 
 
 def delete_user_from_view(service, accountId, webPropertyId, profileId, linkId):
@@ -473,6 +540,7 @@ def main():
     # )
 
     # # Batch add user
+
     # batch_add_users(
     #     ga_service,
     #     ACCOUNT_ID,
@@ -500,10 +568,22 @@ def main():
     #     DPAPAMON_LINKID,
     # )
 
-    # List View Users for AWANI
-    view_users = list_view_users(
-        ga_service, ACCOUNT_ID, AWANI_PROPERTY_ID, AWANI_WEBSITE_COMBINED_ID
-    )
+    # # Batch delete users
+
+    # batch_delete_users(ga_service, ACCOUNT_ID, ["jinified@gmail.com"])
+
+    # # List View Users for AWANI
+    # view_users = list_view_users(
+    #     ga_service, ACCOUNT_ID, AWANI_PROPERTY_ID, AWANI_WEBSITE_COMBINED_ID
+    # )
+
+    # for profileUserLink in view_users.get("items", []):
+    #     userRef = profileUserLink.get("userRef", {})
+    #     permissions = profileUserLink.get("permissions", {})
+
+    #     print(
+    #         f'Email: {userRef.get("email")}, LinkId: {profileUserLink.get("id")}, Permissions: {permissions.get("effective")}'
+    #     )
 
     # # Get container
     # container = get_container(tm_service, TAGMANAGER_ACCOUNT_ID, ACM_CONTAINER_NAME)

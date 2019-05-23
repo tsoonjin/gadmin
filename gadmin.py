@@ -11,6 +11,7 @@ Bulk add GTM tags with scheduled duration
 from googleapiclient.discovery import build
 from oauth2client.service_account import ServiceAccountCredentials
 from googleapiclient.errors import HttpError
+from googleapiclient.http import BatchHttpRequest
 from datetime import datetime
 
 
@@ -50,6 +51,11 @@ def list_account_users(service, accountId):
         account_links = (
             service.management().accountUserLinks().list(accountId=accountId).execute()
         )
+
+        for accountUserLink in account_links.get("items", []):
+            userRef = accountUserLink.get("userRef", {})
+            print(f'User Email: {userRef.get("email")}')
+
         return account_links
 
     except TypeError as error:
@@ -111,6 +117,42 @@ def delete_user_from_view(service, accountId, webPropertyId, profileId, linkId):
     except HttpError as error:
         # Handle API errors.
         print(f"There was an API error : {error.resp.status} : {error.resp.reason}")
+
+
+def batch_add_users(service, accountId, users):
+    """ Batch add users
+
+    Parameters:
+        users (tuple): (user_email, list of requests)
+    """
+
+    def handle_create_user(requestId, response, exception):
+        if exception is not None:
+            print(f"There was an error: {exception}")
+        else:
+            print(f"Request ID: {requestId}, Created user: {response}")
+
+    batch = BatchHttpRequest(callback=handle_create_user)
+
+    for user in users:
+        user_email, requests = user
+        for request in requests:
+            webPropertyId, profileId, permissions = request
+            batch.add(
+                service.management()
+                .profileUserLinks()
+                .insert(
+                    accountId=accountId,
+                    webPropertyId=webPropertyId,
+                    profileId=profileId,
+                    body={
+                        "permissions": {"local": permissions},
+                        "userRef": {"email": user_email},
+                    },
+                )
+            )
+
+    batch.execute()
 
 
 def add_user_to_view(service, accountId, webPropertyId, profileId, config):
@@ -221,10 +263,70 @@ def unix_time_millis(dt):
     return (dt - epoch).total_seconds() * 1000.0
 
 
+def batch_delete_tags(service, accountId, containerId, workspaceId, tags, LIMIT=1000):
+    """ Batch create tags.
+
+    Parameters:
+        tags (list): list of tag id (limited to 1000 requests).
+    """
+
+    def handle_delete_tag(requestId, response, exception):
+        if exception is not None:
+            print(f"There was an error: {exception}")
+
+    if len(tags) > LIMIT:
+        print(f"Number of requests exceeded > {LIMIT}")
+
+    path = f"accounts/{accountId}/containers/{containerId}/workspaces/{workspaceId}"
+    batch = service.new_batch_http_request(callback=handle_delete_tag)
+
+    for tag in tags:
+        path = f"accounts/{accountId}/containers/{containerId}/workspaces/{workspaceId}/tags/{tag}"
+        batch.add(service.accounts().containers().workspaces().tags().delete(path=path))
+    batch.execute()
+
+
+def batch_create_tags(service, accountId, containerId, workspaceId, tags, LIMIT=1000):
+    """ Batch create tags.
+
+    Parameters:
+        tags (list): list of tag config (limited to 1000 requests).
+    """
+
+    def handle_create_tag(requestId, response, exception):
+        if exception is not None:
+            print(f"There was an error: {exception}")
+        else:
+            print(f"Request ID: {requestId}, Created tag: {response}")
+
+    if len(tags) > LIMIT:
+        print(f"Number of requests exceeded > {LIMIT}")
+
+    path = f"accounts/{accountId}/containers/{containerId}/workspaces/{workspaceId}"
+    batch = service.new_batch_http_request(callback=handle_create_tag)
+
+    for tag in tags:
+        tag_body, startDate, endDate = tag
+        tag_body["scheduleStartMs"] = unix_time_millis(
+            datetime.strptime(startDate, "%d%m%Y")
+        )
+        tag_body["scheduleEndMs"] = unix_time_millis(
+            datetime.strptime(endDate, "%d%m%Y")
+        )
+        batch.add(
+            service.accounts()
+            .containers()
+            .workspaces()
+            .tags()
+            .create(parent=path, body=tag_body)
+        )
+    batch.execute()
+
+
 def create_tag(
     service, accountId, containerId, workspaceId, tag_body, startDate, endDate
 ):
-    """Create the Universal Analytics Hello World Tag.
+    """ Create Google Tag.
 
     Args:
         service: the Tag Manager service object.
@@ -250,6 +352,24 @@ def create_tag(
             .create(parent=path, body=tag_body)
             .execute()
         )
+
+    except TypeError as error:
+        # Handle errors in constructing a query.
+        print(f"There was an error in constructing your query : {error}")
+
+    except HttpError as error:
+        # Handle API errors.
+        print(f"There was an API error : {error.resp.status} : {error.resp.reason}")
+
+
+def delete_tag(service, accountId, containerId, workspaceId, tagId):
+    """Delete a tag.
+    """
+
+    path = f"accounts/{accountId}/containers/{containerId}/workspaces/{workspaceId}/tags/{tagId}"
+
+    try:
+        service.accounts().containers().workspaces().tags().delete(path=path).execute()
 
     except TypeError as error:
         # Handle errors in constructing a query.
@@ -298,6 +418,39 @@ def list_tags(service, accountId, containerId, workspaceId):
         print(f"There was an API error : {error.resp.status} : {error.resp.reason}")
 
 
+def list_triggers(service, accountId, containerId, workspaceId):
+    """ List all triggers for the container
+
+    Returns:
+        triggers (list): list of triggers
+    """
+
+    path = f"accounts/{accountId}/containers/{containerId}/workspaces/{workspaceId}"
+
+    try:
+        triggers = (
+            service.accounts()
+            .containers()
+            .workspaces()
+            .triggers()
+            .list(parent=path)
+            .execute()
+        )
+        for trigger in triggers.get("trigger", []):
+            print(f'Trigger Name: {trigger.get("name")}')
+            print(trigger)
+
+        return triggers
+
+    except TypeError as error:
+        # Handle errors in constructing a query.
+        print(f"There was an error in constructing your query : {error}")
+
+    except HttpError as error:
+        # Handle API errors.
+        print(f"There was an API error : {error.resp.status} : {error.resp.reason}")
+
+
 def main():
     AWANI_PROPERTY_ID = "UA-28458950-9"
     AWANI_WEBSITE_COMBINED_ID = "86412644"
@@ -305,13 +458,10 @@ def main():
     TAGMANAGER_ACCOUNT_ID = "123287"
     ACM_CONTAINER_NAME = "01 - Astro - astro.com.my"
     ACM_CONTAINER_ID = "139462"
-    WORKSPACE_ID = "478"
+    WORKSPACE_ID = "478"  # Default workspace id
 
     ga_service = init_service("analytics", "v3", GA_SCOPES, GA_KEY_FILE_LOCATION)
     tm_service = init_service("tagmanager", "v2", TM_SCOPES, GA_KEY_FILE_LOCATION)
-
-    # # List Account Users
-    # account_users = list_account_users(service, ACCOUNT_ID)
 
     # # Add user
     # add_user_to_view(
@@ -322,6 +472,25 @@ def main():
     #     {"permissions": ["READ_AND_ANALYZE"], "email": "dpapamon@gmail.com"},
     # )
 
+    # # Batch add user
+    # batch_add_users(
+    #     ga_service,
+    #     ACCOUNT_ID,
+    #     [
+    #         (
+    #             "sjtsoonj@astro.com.my",
+    #             [(AWANI_PROPERTY_ID, AWANI_WEBSITE_COMBINED_ID, ["READ_AND_ANALYZE"])],
+    #         ),
+    #         (
+    #             "jinified@gmail.com",
+    #             [(AWANI_PROPERTY_ID, AWANI_WEBSITE_COMBINED_ID, ["READ_AND_ANALYZE"])],
+    #         ),
+    #     ],
+    # )
+
+    # # List Account Users
+    # account_users = list_account_users(ga_service, ACCOUNT_ID)
+
     # # Delete user
     # delete_user_from_view(
     #     ga_service,
@@ -331,10 +500,10 @@ def main():
     #     DPAPAMON_LINKID,
     # )
 
-    # # List View Users for AWANI
-    # view_users = list_view_users(
-    #     ga_service, ACCOUNT_ID, AWANI_PROPERTY_ID, AWANI_WEBSITE_COMBINED_ID
-    # )
+    # List View Users for AWANI
+    view_users = list_view_users(
+        ga_service, ACCOUNT_ID, AWANI_PROPERTY_ID, AWANI_WEBSITE_COMBINED_ID
+    )
 
     # # Get container
     # container = get_container(tm_service, TAGMANAGER_ACCOUNT_ID, ACM_CONTAINER_NAME)
@@ -344,13 +513,32 @@ def main():
 
     # # Create the hello world tag.
 
-    # tag_body = {
-    #     "name": "Scheduled Tag",
-    #     "type": "ua",
-    #     "parameter": [
-    #         {"key": "trackingId", "type": "template", "value": AWANI_PROPERTY_ID}
-    #     ],
-    # }
+    tag_body = {
+        "name": "Test Tag 1",
+        "type": "ua",
+        "parameter": [
+            {"key": "trackingId", "type": "template", "value": AWANI_PROPERTY_ID}
+        ],
+    }
+
+    tag_body2 = {
+        "name": "Test Tag 2",
+        "type": "ua",
+        "parameter": [
+            {"key": "trackingId", "type": "template", "value": AWANI_PROPERTY_ID}
+        ],
+    }
+
+    # # Batch creation of tags
+
+    # batch_create_tags(
+    #     tm_service,
+    #     TAGMANAGER_ACCOUNT_ID,
+    #     ACM_CONTAINER_ID,
+    #     WORKSPACE_ID,
+    #     [(tag_body, "23052019", "26052019"), (tag_body2, "26052019", "28052019")],
+    # )
+
     # create_tag(
     #     tm_service,
     #     TAGMANAGER_ACCOUNT_ID,
@@ -361,7 +549,21 @@ def main():
     #     "25052019",
     # )
 
-    tags = list_tags(tm_service, TAGMANAGER_ACCOUNT_ID, ACM_CONTAINER_ID, WORKSPACE_ID)
+    # # Delete a tag
+    # delete_tag(tm_service, TAGMANAGER_ACCOUNT_ID, ACM_CONTAINER_ID, WORKSPACE_ID, 493)
+
+    # # Batch delete tags
+    # batch_delete_tags(
+    #     tm_service, TAGMANAGER_ACCOUNT_ID, ACM_CONTAINER_ID, WORKSPACE_ID, [495, 496]
+    # )
+
+    # # List all tags
+    # tags = list_tags(tm_service, TAGMANAGER_ACCOUNT_ID, ACM_CONTAINER_ID, WORKSPACE_ID)
+
+    # # List all triggers
+    # triggers = list_triggers(
+    #     tm_service, TAGMANAGER_ACCOUNT_ID, ACM_CONTAINER_ID, WORKSPACE_ID
+    # )
 
 
 if __name__ == "__main__":

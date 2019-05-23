@@ -11,6 +11,7 @@ Bulk add GTM tags with scheduled duration
 from googleapiclient.discovery import build
 from oauth2client.service_account import ServiceAccountCredentials
 from googleapiclient.errors import HttpError
+from datetime import datetime
 
 
 GA_SCOPES = [
@@ -215,7 +216,14 @@ def create_workspace(service, container, workspace_name):
         print(f"There was an API error : {error.resp.status} : {error.resp.reason}")
 
 
-def create_tag(service, accountId, containerId, workspaceId, tag_body):
+def unix_time_millis(dt):
+    epoch = datetime.utcfromtimestamp(0)
+    return (dt - epoch).total_seconds() * 1000.0
+
+
+def create_tag(
+    service, accountId, containerId, workspaceId, tag_body, startDate, endDate
+):
     """Create the Universal Analytics Hello World Tag.
 
     Args:
@@ -228,6 +236,10 @@ def create_tag(service, accountId, containerId, workspaceId, tag_body):
     """
 
     path = f"accounts/{accountId}/containers/{containerId}/workspaces/{workspaceId}"
+    tag_body["scheduleStartMs"] = unix_time_millis(
+        datetime.strptime(startDate, "%d%m%Y")
+    )
+    tag_body["scheduleEndMs"] = unix_time_millis(datetime.strptime(endDate, "%d%m%Y"))
 
     try:
         return (
@@ -273,6 +285,7 @@ def list_tags(service, accountId, containerId, workspaceId):
         )
         for tag in tags.get("tag", []):
             print(f'Tag Name: {tag.get("name")}')
+            print(tag)
 
         return tags
 
@@ -332,14 +345,20 @@ def main():
     # # Create the hello world tag.
 
     # tag_body = {
-    #     "name": "Universal Analytics Hello World",
+    #     "name": "Scheduled Tag",
     #     "type": "ua",
     #     "parameter": [
     #         {"key": "trackingId", "type": "template", "value": AWANI_PROPERTY_ID}
     #     ],
     # }
     # create_tag(
-    #     tm_service, TAGMANAGER_ACCOUNT_ID, ACM_CONTAINER_ID, WORKSPACE_ID, tag_body
+    #     tm_service,
+    #     TAGMANAGER_ACCOUNT_ID,
+    #     ACM_CONTAINER_ID,
+    #     WORKSPACE_ID,
+    #     tag_body,
+    #     "21052019",
+    #     "25052019",
     # )
 
     tags = list_tags(tm_service, TAGMANAGER_ACCOUNT_ID, ACM_CONTAINER_ID, WORKSPACE_ID)

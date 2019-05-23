@@ -16,8 +16,14 @@ provider:
   deploymentBucket:
     name: gadmin-lambda
   deploymentPrefix: gadmin
-  environment:
-    keyfile: $(file(./secrets/client_secrets.json))
+  iamRoleStatements:
+    - Effect: Allow
+      Action:
+        - s3:GetObject
+      Resource: arn:aws:s3:::gadmin-lambda/*
+
+
+
 
 functions:
   addUsers:

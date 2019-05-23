@@ -1,0 +1,43 @@
+service: gadmin-service
+
+package:
+  exclude:
+    - venv/**
+    - __pycache__/**
+    - node_modules/**
+
+provider:
+  name: aws
+  runtime: python3.6
+  region: ap-southeast-1
+  timeout: 300
+  apiKeys:
+    - gadmin-api-key
+  deploymentBucket:
+    name: gadmin-lambda
+  deploymentPrefix: gadmin
+  environment:
+    keyfile: $(file(./secrets/client_secrets.json))
+
+functions:
+  addUsers:
+    handler: addUsers.handler
+    events:
+      - http:
+          path: /users
+          method: post
+          private: true
+          cors:
+            origins:
+              - '*'
+
+plugins:
+  - serverless-python-requirements
+  - serverless-prune-plugin
+custom:
+  pythonRequirements:
+    dockerizePip: true
+    slim: true
+  prune:
+    automatic: true
+    number: 3

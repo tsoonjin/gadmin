@@ -510,6 +510,21 @@ Lambda Handlers
 """
 
 
+def handleBatchAddUsers(event, context):
+    body = json.loads(event["body"])
+    users = body["users"]
+    print(users)
+
+    try:
+        batch_add_users(ga_service, ACCOUNT_ID, users)
+        body = {"message": "Success"}
+        return {"statusCode": 200, "body": json.dumps(body)}
+    except Exception as e:
+        print(e)
+        body = {"errorResponse": e}
+        return {"statusCode": 400, "body": json.dumps(body)}
+
+
 def handleListViewUsers(event, context):
     propertyId, viewId = itemgetter("propertyId", "viewId")(event["pathParameters"])
     try:

@@ -51,6 +51,16 @@ functions:
               paths:
                 propertyId: true
                 viewId: true
+  batchAddUsers:
+    handler: gadmin.handleBatchAddUsers
+    events:
+      - http:
+          path: /users
+          method: post
+          private: true
+          cors:
+            origins:
+              - '*'
   listTags:
     handler: gadmin.handleListTags
     events:

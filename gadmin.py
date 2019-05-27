@@ -11,8 +11,8 @@ Bulk add GTM tags with scheduled duration
 import time
 import json
 import multiprocessing
-from googleapiclient.discovery import build
-from oauth2client.service_account import ServiceAccountCredentials
+from operator import itemgetter
+from utils import init_service
 from googleapiclient.errors import HttpError
 from googleapiclient.http import BatchHttpRequest
 from datetime import datetime
@@ -26,20 +26,16 @@ TM_SCOPES = ["https://www.googleapis.com/auth/tagmanager.edit.containers"]
 GA_KEY_FILE_LOCATION = "./secrets/client_secrets.json"
 VIEW_ID = "86412644"
 ACCOUNT_ID = "20278225"
+TAGMANAGER_ACCOUNT_ID = "123287"
+ACM_CONTAINER_ID = "139462"
+WORKSPACE_ID = "478"  # Default workspace id
 
+keyfile = None
+with open(GA_KEY_FILE_LOCATION, "r") as f:
+    keyfile = json.load(f)
 
-def init_service(name, version, keyfile):
-    """Initializes Google API service object
-
-    Returns:
-        An authorized Google API service object.
-    """
-    credentials = ServiceAccountCredentials.from_json_keyfile_dict(keyfile)
-
-    # Build the service object.
-    service = build(name, version, credentials=credentials)
-
-    return service
+ga_service = init_service("analytics", "v3", keyfile)
+tm_service = init_service("tagmanager", "v2", keyfile)
 
 
 def list_account_users(service, accountId):
@@ -52,11 +48,6 @@ def list_account_users(service, accountId):
         account_links = (
             service.management().accountUserLinks().list(accountId=accountId).execute()
         )
-
-        for accountUserLink in account_links.get("items", []):
-            userRef = accountUserLink.get("userRef", {})
-            print(f'User Email: {userRef.get("email")}')
-
         return account_links
 
     except TypeError as error:
@@ -469,9 +460,6 @@ def list_tags(service, accountId, containerId, workspaceId):
             .list(parent=path)
             .execute()
         )
-        for tag in tags.get("tag", []):
-            print(f'Tag Name: {tag.get("name")}')
-            print(tag)
 
         return tags
 
@@ -515,6 +503,46 @@ def list_triggers(service, accountId, containerId, workspaceId):
     except HttpError as error:
         # Handle API errors.
         print(f"There was an API error : {error.resp.status} : {error.resp.reason}")
+
+
+"""
+Lambda Handlers
+"""
+
+
+def handleListViewUsers(event, context):
+    propertyId, viewId = itemgetter("propertyId", "viewId")(event["pathParameters"])
+    try:
+        view_users = list_view_users(ga_service, ACCOUNT_ID, propertyId, viewId)
+        body = {"data": view_users}
+        return {"statusCode": 200, "body": json.dumps(body)}
+    except Exception as e:
+        print(e)
+        body = {"errorResponse": e}
+        return {"statusCode": 400, "body": json.dumps(body)}
+
+
+def handleListAccountUsers(event, context):
+    try:
+        account_users = list_account_users(ga_service, ACCOUNT_ID)
+        body = {"data": account_users}
+        return {"statusCode": 200, "body": json.dumps(body)}
+    except Exception as e:
+        print(e)
+        body = {"errorResponse": e}
+        return {"statusCode": 400, "body": json.dumps(body)}
+
+
+def handleListTags(event, context):
+    containerId = itemgetter("containerId")(event["pathParameters"])
+    try:
+        tags = list_tags(tm_service, TAGMANAGER_ACCOUNT_ID, containerId, WORKSPACE_ID)
+        body = {"data": tags}
+        return {"statusCode": 200, "body": json.dumps(body)}
+    except Exception as e:
+        print(e)
+        body = {"errorResponse": e}
+        return {"statusCode": 400, "body": json.dumps(body)}
 
 
 def main():

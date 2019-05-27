@@ -26,16 +26,45 @@ provider:
 
 
 functions:
-  addUsers:
-    handler: addUsers.handler
+  listAccountUsers:
+    handler: gadmin.handleListAccountUsers
     events:
       - http:
           path: /users
-          method: post
+          method: get
           private: true
           cors:
             origins:
               - '*'
+  listViewUsers:
+    handler: gadmin.handleListViewUsers
+    events:
+      - http:
+          path: /users/{propertyId}/{viewId}
+          method: get
+          private: true
+          cors:
+            origins:
+              - '*'
+          request:
+            parameters:
+              paths:
+                propertyId: true
+                viewId: true
+  listTags:
+    handler: gadmin.handleListTags
+    events:
+      - http:
+          path: /tags/{containerId}
+          method: get
+          private: true
+          cors:
+            origins:
+              - '*'
+          request:
+            parameters:
+              paths:
+                containerId: true
 
 plugins:
   - serverless-python-requirements

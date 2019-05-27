@@ -510,6 +510,24 @@ Lambda Handlers
 """
 
 
+def handleBatchCreateTags(event, context):
+    containerId = itemgetter("containerId")(event["pathParameters"])
+    body = json.loads(event["body"])
+    tags = body["tags"]
+    print(tags)
+
+    try:
+        batch_create_tags(
+            tm_service, TAGMANAGER_ACCOUNT_ID, containerId, WORKSPACE_ID, tags
+        )
+        body = {"message": "Success"}
+        return {"statusCode": 200, "body": json.dumps(body)}
+    except Exception as e:
+        print(e)
+        body = {"errorResponse": e}
+        return {"statusCode": 400, "body": json.dumps(body)}
+
+
 def handleBatchAddUsers(event, context):
     body = json.loads(event["body"])
     users = body["users"]

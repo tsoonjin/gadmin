@@ -75,6 +75,20 @@ functions:
             parameters:
               paths:
                 containerId: true
+  batchCreateTags:
+    handler: gadmin.handleBatchCreateTags
+    events:
+      - http:
+          path: /tags/{containerId}
+          method: post
+          private: true
+          cors:
+            origins:
+              - '*'
+          request:
+            parameters:
+              paths:
+                containerId: true
 
 plugins:
   - serverless-python-requirements
